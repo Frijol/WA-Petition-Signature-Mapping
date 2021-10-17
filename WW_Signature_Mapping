@@ -1,0 +1,148 @@
+{
+  "nbformat": 4,
+  "nbformat_minor": 0,
+  "metadata": {
+    "colab": {
+      "name": "WW Signature Mapping.ipynb",
+      "provenance": [],
+      "collapsed_sections": []
+    },
+    "kernelspec": {
+      "name": "python3",
+      "display_name": "Python 3"
+    },
+    "language_info": {
+      "name": "python"
+    }
+  },
+  "cells": [
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "-GT16RdReU3t"
+      },
+      "source": [
+        "# Import data - DELETE old file first from Files tab!\n",
+        "from google.colab import files\n",
+        "import pandas as pd\n",
+        "uploaded=files.upload()\n",
+        "data = pd.read_csv('data.csv').drop(columns=['First name', 'Last name', 'Address', 'Phone', 'Email', 'Volunteer'])\n",
+        "data"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "mK8jgzWojoWk"
+      },
+      "source": [
+        "# Get the signature counts per county\n",
+        "county_counts = pd.DataFrame(data.value_counts('County').reset_index().values, columns=['Area_name', 'Signatures'])\n",
+        "county_counts.Area_name += ' County'\n",
+        "\n",
+        "# Match counties to geojson\n",
+        "url = (\n",
+        "    \"https://raw.githubusercontent.com/python-visualization/folium/master/examples/data\"\n",
+        ")\n",
+        "county_data = f\"{url}/us_county_data.csv\"\n",
+        "county_geo = f\"{url}/us_counties_20m_topo.json\"\n",
+        "df = pd.read_csv(county_data, na_values=[\" \"]).drop(columns=['Unemployment_rate_2011', 'Employed_2011','Median_Household_Income_2011','Med_HH_Income_Percent_of_StateTotal_2011', 'Unemployed_2011', 'Civilian_labor_force_2011'])\n",
+        "df=df[(df.State == 'WA')]\n",
+        "\n",
+        "df = pd.merge(df, county_counts, on=\"Area_name\")\n",
+        "df"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "cybbCbMvqH_P"
+      },
+      "source": [
+        "# Map absolute signature counts per county\n",
+        "import folium\n",
+        "import branca\n",
+        "import json\n",
+        "import requests\n",
+        "\n",
+        "colorscale = branca.colormap.linear.YlOrRd_09.scale(0, county_counts.Signatures.max())\n",
+        "signature_series = df.set_index(\"FIPS_Code\")[\"Signatures\"]\n",
+        "\n",
+        "\n",
+        "def style_function(feature):\n",
+        "    signatures = signature_series.get(int(feature[\"id\"][-5:]), None)\n",
+        "    return {\n",
+        "        \"fillOpacity\": 0.5,\n",
+        "        \"weight\": 0,\n",
+        "        \"fillColor\": \"#black\" if signatures is None else colorscale(signatures),\n",
+        "    }\n",
+        "\n",
+        "m = folium.Map(\n",
+        "    location=[47.6, -120],\n",
+        "    zoom_start=7,\n",
+        "    tiles=\"cartodbpositron\"\n",
+        "    )\n",
+        "\n",
+        "folium.TopoJson(\n",
+        "    json.loads(requests.get(county_geo).text),\n",
+        "    \"objects.us_counties_20m\",\n",
+        "    style_function=style_function,\n",
+        ").add_to(m)\n",
+        "\n",
+        "\n",
+        "m"
+      ],
+      "execution_count": null,
+      "outputs": []
+    },
+    {
+      "cell_type": "code",
+      "metadata": {
+        "id": "gSbJu7ZTTTHa"
+      },
+      "source": [
+        "# Map signatures per capita\n",
+        "# Get and arrange population info (download from https://worldpopulationreview.com/us-counties/states/wa)\n",
+        "populations = pd.read_csv('populations.csv').drop(columns=['GrowthRate', 'popDensity'])\n",
+        "populations.columns=['Area_name', 'Population']\n",
+        "df = pd.merge(df, populations, on=\"Area_name\")\n",
+        "\n",
+        "df['Signatures per Capita'] = df.apply(lambda row: row.Signatures/row.Population, axis=1)\n",
+        "\n",
+        "#Map!\n",
+        "colorscale = branca.colormap.linear.YlOrRd_09.scale(0, df['Signatures per Capita'].max())\n",
+        "signature_series = df.set_index(\"FIPS_Code\")[\"Signatures per Capita\"]\n",
+        "\n",
+        "\n",
+        "def style_function(feature):\n",
+        "    signatures = signature_series.get(int(feature[\"id\"][-5:]), None)\n",
+        "    return {\n",
+        "        \"fillOpacity\": 0.5,\n",
+        "        \"weight\": 0,\n",
+        "        \"fillColor\": \"#black\" if signatures is None else colorscale(signatures),\n",
+        "    }\n",
+        "\n",
+        "m = folium.Map(\n",
+        "    location=[47.6, -120],\n",
+        "    zoom_start=7,\n",
+        "    tiles=\"cartodbpositron\"\n",
+        "    )\n",
+        "\n",
+        "folium.TopoJson(\n",
+        "    json.loads(requests.get(county_geo).text),\n",
+        "    \"objects.us_counties_20m\",\n",
+        "    style_function=style_function,\n",
+        ").add_to(m)\n",
+        "\n",
+        "\n",
+        "m"
+      ],
+      "execution_count": null,
+      "outputs": []
+    }
+  ]
+}
